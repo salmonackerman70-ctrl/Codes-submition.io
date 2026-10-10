@@ -1,0 +1,349 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CodeDrop</title>
+
+<style>
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    padding: 20px;
+    font-family: Arial, sans-serif;
+    background: #0b1120;
+    color: white;
+}
+
+.container {
+    max-width: 700px;
+    margin: auto;
+}
+
+h1 {
+    color: #60a5fa;
+    text-align: center;
+}
+
+p {
+    color: #bdc8dc;
+}
+
+input, textarea {
+    width: 100%;
+    padding: 13px;
+    margin: 8px 0;
+    border: 1px solid #334155;
+    border-radius: 8px;
+    background: #111c30;
+    color: white;
+    font-size: 15px;
+}
+
+textarea {
+    height: 260px;
+    font-family: monospace;
+    resize: vertical;
+}
+
+button {
+    padding: 13px;
+    margin: 5px 0;
+    width: 100%;
+    border: none;
+    border-radius: 8px;
+    background: #2563eb;
+    color: white;
+    font-weight: bold;
+    font-size: 15px;
+}
+
+.secondary {
+    background: #334155;
+}
+
+.card {
+    background: #162238;
+    padding: 15px;
+    margin: 15px 0;
+    border-radius: 12px;
+    overflow-wrap: anywhere;
+}
+
+pre {
+    background: #080d16;
+    padding: 12px;
+    overflow-x: auto;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    color: #86efac;
+}
+
+.hidden {
+    display: none;
+}
+
+.small {
+    font-size: 13px;
+    color: #9caec7;
+}
+</style>
+</head>
+
+<body>
+<div class="container">
+
+<h1>⌨ CodeDrop</h1>
+<p style="text-align:center">
+Share your code without sending long messages!
+</p>
+
+<div id="submitPage" class="card">
+    <h2>Submit Your Code</h2>
+
+    <input id="studentName"
+           placeholder="Your name">
+
+    <input id="projectName"
+           placeholder="Project name">
+
+    <textarea id="code"
+              placeholder="Paste your code here..."></textarea>
+
+    <button id="sendButton" onclick="submitCode()">
+        SUBMIT CODE
+    </button>
+
+    <p id="message" class="small"></p>
+</div>
+
+<div class="card">
+    <button class="secondary" onclick="showAdmin()">
+        ADMIN LOGIN
+    </button>
+</div>
+
+<div id="adminPage" class="hidden">
+    <div class="card" id="loginBox">
+        <h2>Admin Login</h2>
+        <input id="adminEmail" type="email"
+               placeholder="Admin email">
+        <input id="adminPassword" type="password"
+               placeholder="Admin password">
+        <button onclick="loginAdmin()">LOGIN</button>
+        <p id="loginMessage" class="small"></p>
+    </div>
+
+    <div id="dashboard" class="hidden">
+        <h2>Submitted Codes</h2>
+        <button onclick="loadSubmissions()">REFRESH</button>
+        <button class="secondary" onclick="logoutAdmin()">LOG OUT</button>
+        <div id="submissions"></div>
+    </div>
+</div>
+
+</div>
+
+<script type="module">
+import { initializeApp } from
+"https://www.gstatic.com/firebasejs/11.6.0/firebase-app.js";
+
+import {
+    getDatabase,
+    ref,
+    push,
+    set,
+    get,
+    query,
+    orderByChild,
+    limitToLast
+} from "https://www.gstatic.com/firebasejs/11.6.0/firebase-database.js";
+
+import {
+    getAuth,
+    signInWithEmailAndPassword,
+    signOut,
+    onAuthStateChanged
+} from "https://www.gstatic.com/firebasejs/11.6.0/firebase-auth.js";
+
+// STEP 2: Replace these values with your Firebase project settings.
+const firebaseConfig = {
+    apiKey: "YOUR_API_KEY",
+    authDomain: "YOUR_PROJECT.firebaseapp.com",
+    databaseURL: "YOUR_DATABASE_URL",
+    projectId: "YOUR_PROJECT_ID",
+    appId: "YOUR_APP_ID"
+};
+
+const app = initializeApp(firebaseConfig);
+const db = getDatabase(app);
+const auth = getAuth(app);
+
+// Use the SAME email as your admin Firebase account.
+const ADMIN_EMAIL = "YOUR_ADMIN_EMAIL";
+
+window.showAdmin = function() {
+    document.getElementById("adminPage")
+        .classList.remove("hidden");
+};
+
+window.submitCode = async function() {
+    const name = document.getElementById("studentName")
+        .value.trim();
+    const project = document.getElementById("projectName")
+        .value.trim();
+    const code = document.getElementById("code").value;
+    const message = document.getElementById("message");
+    const button = document.getElementById("sendButton");
+
+    if (!name || !project || !code.trim()) {
+        message.textContent = "Please fill in every field.";
+        return;
+    }
+
+    if (code.length > 100000) {
+        message.textContent = "Code is too long (100,000 characters maximum).";
+        return;
+    }
+
+    button.disabled = true;
+    message.textContent = "Submitting...";
+
+    try {
+        const newSubmission = push(ref(db, "submissions"));
+
+        await set(newSubmission, {
+            name: name,
+            project: project,
+            code: code,
+            createdAt: Date.now()
+        });
+
+        message.textContent = "Code submitted successfully!";
+        document.getElementById("studentName").value = "";
+        document.getElementById("projectName").value = "";
+        document.getElementById("code").value = "";
+
+    } catch (error) {
+        message.textContent =
+            "Submission failed. Check Firebase setup and rules.";
+        console.error(error);
+    } finally {
+        button.disabled = false;
+    }
+};
+
+window.loginAdmin = async function() {
+    const email = document.getElementById("adminEmail")
+        .value.trim();
+    const password = document.getElementById("adminPassword")
+        .value;
+    const message = document.getElementById("loginMessage");
+
+    if (email.toLowerCase() !== ADMIN_EMAIL.toLowerCase()) {
+        message.textContent = "This is not the admin email.";
+        return;
+    }
+
+    try {
+        await signInWithEmailAndPassword(auth, email, password);
+    } catch (error) {
+        message.textContent = "Login failed. Check your credentials.";
+    }
+};
+
+onAuthStateChanged(auth, user => {
+    const isAdmin = user &&
+        user.email &&
+        user.email.toLowerCase() === ADMIN_EMAIL.toLowerCase();
+
+    document.getElementById("loginBox")
+        .classList.toggle("hidden", !!isAdmin);
+
+    document.getElementById("dashboard")
+        .classList.toggle("hidden", !!isAdmin);
+
+    if (isAdmin) {
+        loadSubmissions();
+    } else {
+        document.getElementById("submissions").innerHTML = "";
+    }
+});
+
+window.loadSubmissions = async function() {
+    const area = document.getElementById("submissions");
+    area.textContent = "Loading submissions...";
+
+    if (!auth.currentUser ||
+        auth.currentUser.email?.toLowerCase() !==
+        ADMIN_EMAIL.toLowerCase()) {
+        area.textContent = "Please log in as admin.";
+        return;
+    }
+
+    try {
+        const submissionsQuery = query(
+            ref(db, "submissions"),
+            orderByChild("createdAt"),
+            limitToLast(100)
+        );
+
+        const snapshot = await get(submissionsQuery);
+        area.replaceChildren();
+
+        if (!snapshot.exists()) {
+            area.textContent = "No submissions yet.";
+            return;
+        }
+
+        const items = [];
+        snapshot.forEach(child => {
+            items.push({
+                id: child.key,
+                ...child.val()
+            });
+        });
+
+        items.reverse().forEach(item => {
+            const card = document.createElement("div");
+            card.className = "card";
+
+            const heading = document.createElement("h3");
+            heading.textContent = item.project || "Untitled project";
+
+            const student = document.createElement("p");
+            student.textContent = "From: " + (item.name || "Unknown");
+
+            const code = document.createElement("pre");
+            code.textContent = item.code || "";
+
+            const copy = document.createElement("button");
+            copy.textContent = "COPY CODE";
+            copy.onclick = async () => {
+                try {
+                    await navigator.clipboard.writeText(code.textContent);
+                    copy.textContent = "COPIED!";
+                } catch {
+                    copy.textContent = "Copy unavailable in this browser.";
+                }
+            };
+
+            card.append(heading, student, code, copy);
+            area.appendChild(card);
+        });
+    } catch (error) {
+        area.textContent = "Could not load submissions. Check database rules.";
+        console.error(error);
+    }
+};
+
+window.logoutAdmin = async function() {
+    await signOut(auth);
+};
+</script>
+</body>
+</html>

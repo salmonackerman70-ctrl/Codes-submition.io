@@ -1,0 +1,211 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CodeDrop</title>
+
+<style>
+*{box-sizing:border-box}
+body{
+ margin:0;padding:18px;background:#0b1120;
+ color:white;font-family:Arial,sans-serif
+}
+.container{max-width:750px;margin:auto}
+h1{text-align:center;color:#60a5fa}
+.card{
+ background:#162238;padding:16px;
+ border-radius:12px;margin:16px 0;
+ overflow-wrap:anywhere
+}
+input,textarea{
+ width:100%;padding:12px;margin:7px 0;
+ border:1px solid #334155;border-radius:8px;
+ background:#0b1120;color:white;font-size:15px
+}
+textarea{height:220px;font-family:monospace}
+button{
+ width:100%;padding:12px;margin-top:8px;
+ border:0;border-radius:8px;
+ background:#2563eb;color:white;
+ font-weight:bold;font-size:15px
+}
+pre{
+ background:#080d16;color:#86efac;
+ padding:12px;white-space:pre-wrap;
+ overflow-wrap:anywhere
+}
+.small{color:#a8b7ce;font-size:13px}
+</style>
+</head>
+
+<body>
+<div class="container">
+<h1>⌨ CodeDrop</h1>
+<p style="text-align:center">Submit your code online</p>
+
+<div class="card">
+<h2>Submit Code</h2>
+<input id="student" placeholder="Your name">
+<input id="project" placeholder="Project name">
+<textarea id="code" placeholder="Paste your code here"></textarea>
+<button id="submitBtn" onclick="submitCode()">SUBMIT CODE</button>
+<p id="status" class="small"></p>
+</div>
+
+<div class="card">
+<h2>All Submissions</h2>
+<button onclick="loadCodes()">REFRESH SUBMISSIONS</button>
+<p id="count" class="small"></p>
+<div id="submissions"></div>
+</div>
+</div>
+
+<script>
+/* PASTE YOUR FIREBASE CONFIG VALUES HERE */
+const DATABASE_URL = "PASTE_YOUR_DATABASE_URL_HERE";
+
+function databaseReady(){
+ return DATABASE_URL.startsWith("https://") &&
+        DATABASE_URL.endsWith("firebaseio.com") ||
+        (DATABASE_URL.startsWith("https://") &&
+         DATABASE_URL.includes("firebasedatabase.app"));
+}
+
+function showStatus(message){
+ document.getElementById("status").textContent = message;
+}
+
+async function submitCode(){
+ const name = document.getElementById("student").value.trim();
+ const project = document.getElementById("project").value.trim();
+ const code = document.getElementById("code").value;
+ const btn = document.getElementById("submitBtn");
+
+ if(!databaseReady()){
+  showStatus("Set up Firebase and paste your database URL first.");
+  return;
+ }
+
+ if(!name || !project || !code.trim()){
+  showStatus("Fill in your name, project name, and code.");
+  return;
+ }
+
+ if(code.length > 100000){
+  showStatus("Code is too long. Maximum is 100,000 characters.");
+  return;
+ }
+
+ btn.disabled = true;
+ showStatus("Submitting...");
+
+ try{
+  const id = crypto.randomUUID();
+  const response = await fetch(
+   DATABASE_URL + "/submissions/" + id + ".json",
+   {
+    method:"PUT",
+    headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({
+     name:name,
+     project:project,
+     code:code,
+     submittedAt:Date.now()
+    })
+   }
+  );
+
+  if(!response.ok) throw new Error("Submission failed");
+
+  document.getElementById("student").value = "";
+  document.getElementById("project").value = "";
+  document.getElementById("code").value = "";
+
+  showStatus("Submitted successfully!");
+  await loadCodes();
+ }catch(error){
+  showStatus("Could not submit. Check your database URL and Firebase rules.");
+ }finally{
+  btn.disabled = false;
+ }
+}
+
+async function loadCodes(){
+ const list = document.getElementById("submissions");
+ const count = document.getElementById("count");
+
+ if(!databaseReady()){
+  list.textContent = "Set up Firebase first.";
+  return;
+ }
+
+ list.textContent = "Loading submissions...";
+
+ try{
+  const response = await fetch(
+   DATABASE_URL + "/submissions.json"
+  );
+
+  if(!response.ok) throw new Error("Could not load");
+
+  const data = await response.json();
+  list.replaceChildren();
+
+  if(!data){
+   list.textContent = "No submissions yet.";
+   count.textContent = "";
+   return;
+  }
+
+  const entries = Object.entries(data).sort(
+   (a,b)=>(b[1].submittedAt || 0)-(a[1].submittedAt || 0)
+  );
+
+  count.textContent = entries.length + " submission(s)";
+
+  entries.forEach(([id,item])=>{
+   const card = document.createElement("div");
+   card.className = "card";
+
+   const title = document.createElement("h3");
+   title.textContent = item.project || "Untitled project";
+
+   const author = document.createElement("p");
+   author.textContent = "Submitted by: " + (item.name || "Unknown");
+
+   const date = document.createElement("p");
+   date.className = "small";
+   date.textContent = item.submittedAt
+    ? new Date(item.submittedAt).toLocaleString()
+    : "";
+
+   const code = document.createElement("pre");
+   code.textContent = item.code || "";
+
+   const copy = document.createElement("button");
+   copy.textContent = "COPY CODE";
+   copy.onclick = async ()=>{
+    try{
+     await navigator.clipboard.writeText(item.code || "");
+     copy.textContent = "COPIED!";
+    }catch{
+     copy.textContent = "Copy unavailable on this browser";
+    }
+   };
+
+   card.append(title,author,date,code,copy);
+   list.appendChild(card);
+  });
+ }catch(error){
+  list.textContent =
+   "Failed to load submissions. Check the database URL and rules.";
+  count.textContent = "";
+ }
+}
+
+loadCodes();
+</script>
+</body>
+</html>
